@@ -1,0 +1,17 @@
+#!/usr/bin/env groovy
+/**
+ * Capacinator Multibranch Pipeline
+ *
+ * This is the real pipeline loaded from capacinator-jenkins-lib.
+ * The Capacinator repository contains only a minimal stub.
+ *
+ * Pipeline stages:
+ * 1. Initialize - Branch filtering, checkout, GitHub status
+ * 2. Install Dependencies - npm ci with caching
+ * 3. Lint + Type Check - ESLint + TypeScript validation
+ * 4. Unit Tests - Jest with coverage (threshold: 45%)
+ * 5. E2E Tests - Playwright (main/develop/PRs only)
+ * 6. Build - Client, server, Electron Linux (main/develop only)
+ */
+
+capacinatorMultibranchPipeline()

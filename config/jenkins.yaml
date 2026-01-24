@@ -1,0 +1,97 @@
+# Jenkins Configuration as Code (JCasC) - Capacinator Additions
+# This file documents the Capacinator-specific configuration additions
+# The actual applied configuration is in kindash-jenkins-lib/config/jenkins.yaml
+
+jenkins:
+  systemMessage: |
+    CI/CD Pipeline Server
+    Projects: KinDash, uniteDiscord, Capacinator
+
+  # Build agent configuration
+  # Note: runner-5 should have label "linux docker build electron" for Electron builds
+  nodes:
+    - permanent:
+        name: "runner-5"
+        remoteFS: "/home/jenkins/agent"
+        numExecutors: 1
+        mode: NORMAL
+        labelString: "linux docker build electron"
+        launcher:
+          inbound:
+            workDirSettings:
+              disabled: false
+              internalDir: "remoting"
+        retentionStrategy: "always"
+
+unclassified:
+  globalLibraries:
+    libraries:
+      - name: "capacinator-lib"
+        defaultVersion: "main"
+        implicit: false
+        allowVersionOverride: true
+        retriever:
+          modernSCM:
+            scm:
+              git:
+                remote: "https://github.com/steiner385/capacinator-jenkins-lib.git"
+                credentialsId: "github-credentials"
+
+# Job Definitions
+jobs:
+  # Capacinator Multi-branch Pipeline
+  - script: |
+      multibranchPipelineJob('Capacinator-multibranch') {
+        displayName('Capacinator Branches')
+        description('Multi-branch pipeline for all Capacinator branches and PRs')
+        branchSources {
+          github {
+            id('capacinator-github-source')
+            repoOwner('steiner385')
+            repository('Capacinator')
+            scanCredentialsId('github-credentials')
+            buildOriginBranch(true)
+            buildOriginBranchWithPR(false)
+            buildOriginPRMerge(true)
+            buildOriginPRHead(false)
+            buildForkPRMerge(false)
+          }
+        }
+        factory {
+          remoteJenkinsFileWorkflowBranchProjectFactory {
+            localMarker('')
+            matchBranches(false)
+            remoteJenkinsFile('Jenkinsfile.multibranch')
+            remoteJenkinsFileSCM {
+              gitSCM {
+                userRemoteConfigs {
+                  userRemoteConfig {
+                    name('origin')
+                    url('https://github.com/steiner385/capacinator-jenkins-lib.git')
+                    refspec('main')
+                    credentialsId('github-credentials')
+                  }
+                }
+                branches {
+                  branchSpec {
+                    name('main')
+                  }
+                }
+                browser {}
+                gitTool('')
+              }
+            }
+          }
+        }
+        orphanedItemStrategy {
+          discardOldItems {
+            numToKeep(30)
+            daysToKeep(60)
+          }
+        }
+        triggers {
+          periodicFolderTrigger {
+            interval('5 minutes')
+          }
+        }
+      }
