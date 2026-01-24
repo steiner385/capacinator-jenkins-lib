@@ -63,7 +63,8 @@ def call(Map config = [:]) {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                         runLintChecks(
                             lintCommand: 'npm run lint',
-                            typeCheckCommand: 'npm run typecheck'
+                            typeCheckCommand: 'npm run typecheck',
+                            skipCheckout: true
                         )
                     }
                 }
@@ -74,7 +75,8 @@ def call(Map config = [:]) {
                 steps {
                     runUnitTests(
                         testCommand: 'npm run test:unit',
-                        coverageThreshold: 45
+                        coverageThreshold: 45,
+                        skipCheckout: true
                     )
                 }
             }
