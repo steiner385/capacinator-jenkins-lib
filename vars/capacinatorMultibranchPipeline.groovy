@@ -94,6 +94,9 @@ def call(Map config = [:]) {
                 agent {
                     label 'e2e playwright'
                 }
+                options {
+                    timeout(time: 15, unit: 'MINUTES')
+                }
                 steps {
                     runE2ETests(
                         browsers: ['chromium']

@@ -78,7 +78,13 @@ def call(Map config = [:]) {
 
         // Install Playwright browsers if not cached
         echo "Installing Playwright browsers..."
-        sh "npx playwright install ${browsers.join(' ')}"
+        sh """
+            # Install browsers with dependencies (--with-deps for Linux agents)
+            npx playwright install --with-deps ${browsers.join(' ')} || {
+                echo "Warning: Browser install failed, attempting without deps..."
+                npx playwright install ${browsers.join(' ')}
+            }
+        """
 
         // Run Playwright tests
         echo "Running Playwright tests..."
