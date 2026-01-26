@@ -120,7 +120,7 @@ def call(Map config = [:]) {
                     stage('Build Application') {
                         steps {
                             buildProject(
-                                buildCommand: 'npm run build'
+                                buildCommand: 'npm run build:server && npm run build:client'
                             )
                         }
                     }
