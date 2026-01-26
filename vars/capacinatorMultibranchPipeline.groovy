@@ -112,6 +112,8 @@ def call(Map config = [:]) {
                     anyOf {
                         branch 'main'
                         branch 'develop'
+                        changeRequest target: 'main'
+                        changeRequest target: 'develop'
                     }
                 }
                 stages {
