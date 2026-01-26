@@ -126,9 +126,6 @@ def call(Map config = [:]) {
                     }
 
                     stage('Build Electron') {
-                        agent {
-                            label 'build electron'
-                        }
                         steps {
                             buildElectronApp(
                                 platforms: ['linux']
