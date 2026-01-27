@@ -40,15 +40,15 @@ def call(Map config = [:]) {
 
         switch (platform) {
             case 'linux':
-                buildCommand = 'npm run dist:linux'
-                artifacts = 'dist-electron/*.AppImage,dist-electron/*.deb,dist-electron/*.rpm'
+                buildCommand = 'npm run build:electron -- --linux --publish never'
+                artifacts = 'dist-electron/*.AppImage,dist-electron/*.deb,dist-electron/*.rpm,dist-electron/*.snap'
                 break
             case 'win':
-                buildCommand = 'npm run dist:win'
+                buildCommand = 'npm run build:electron -- --win --publish never'
                 artifacts = 'dist-electron/*.exe'
                 break
             case 'mac':
-                buildCommand = 'npm run dist:mac'
+                buildCommand = 'npm run build:electron -- --mac --publish never'
                 artifacts = 'dist-electron/*.dmg'
                 break
             default:
