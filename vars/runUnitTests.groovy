@@ -35,8 +35,8 @@ def call(Map config = [:]) {
     echo "✓ Using Jest with platform-aware configuration"
     def isWindows = isUnix() ? false : true
     def testCommand = config.testCommand ?: (isWindows ?
-        'npm run test -- --coverage --maxWorkers=1' :
-        'npm run test -- --coverage --maxWorkers=50%')
+        'npm run test -- --coverage --bail --forceExit --detectOpenHandles --maxWorkers=1' :
+        'npm run test -- --coverage --bail --forceExit --detectOpenHandles --maxWorkers=50%')
     def coverageDir = config.coverageDir ?: 'coverage'
 
     // Report pending status
