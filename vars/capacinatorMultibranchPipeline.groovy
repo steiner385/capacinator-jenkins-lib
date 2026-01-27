@@ -40,6 +40,10 @@ def call(Map config = [:]) {
                             return
                         }
 
+                        // Enable Windows builds only for main branch
+                        env.BUILD_WINDOWS = (env.BRANCH_NAME == 'main') ? 'true' : 'false'
+                        echo "Windows builds: ${env.BUILD_WINDOWS}"
+
                         githubStatusReporter(
                             status: 'pending',
                             context: 'jenkins/ci',
@@ -127,9 +131,19 @@ def call(Map config = [:]) {
 
                     stage('Build Electron') {
                         steps {
-                            buildElectronApp(
-                                platforms: ['linux']
-                            )
+                            script {
+                                def platforms = ['linux']
+                                if (env.BUILD_WINDOWS == 'true') {
+                                    platforms << 'win'
+                                    echo "Building Electron for Linux and Windows"
+                                } else {
+                                    echo "Building Electron for Linux only (set BUILD_WINDOWS=true to enable Windows)"
+                                }
+
+                                buildElectronApp(
+                                    platforms: platforms
+                                )
+                            }
                         }
                     }
                 }
