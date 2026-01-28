@@ -16,6 +16,11 @@ def call(Map config = [:]) {
             CI = 'true'
             NODE_ENV = 'test'
             NODE_OPTIONS = '--max-old-space-size=4096'
+            // GitHub feature environment variables for testing
+            ENCRYPTION_KEY = 'IwNwIe9IIR+3HKINAJNGLG10dw1gvaGAS1liA7SaXjA='
+            GITHUB_CLIENT_ID = 'test-client-id'
+            GITHUB_CLIENT_SECRET = 'test-client-secret'
+            GITHUB_CALLBACK_URL = 'http://localhost:3131/api/auth/github/callback'
         }
 
         options {
