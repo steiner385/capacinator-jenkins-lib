@@ -75,6 +75,9 @@ jobs:
                       deleteUntrackedNestedRepositories(true)
                     }
                   }
+                  // Disable automatic GitHub status notifications (continuous-integration/jenkins/*)
+                  // Pipeline uses githubStatusReporter for custom status contexts (jenkins/ci, jenkins/lint, etc.)
+                  gitHubSkipNotifications()
                 }
               }
             }
