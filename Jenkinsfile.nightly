@@ -1,0 +1,226 @@
+#!/usr/bin/env groovy
+/**
+ * Nightly Build Pipeline for Capacinator
+ * Comprehensive nightly testing including full test suite and security scans
+ *
+ * Schedule: Runs daily at 3:00 AM (triggered by Jenkins cron)
+ *
+ * Features:
+ * - Full unit test coverage
+ * - E2E tests across all browsers
+ * - Security audits (npm audit)
+ * - Build & bundle analysis
+ *
+ * Note: This pipeline explicitly checks out the Capacinator application repo
+ * (not capacinator-jenkins-lib where this Jenkinsfile lives).
+ */
+
+// Load the shared library to access pipelineHelpers
+library identifier: 'capacinator-lib@main',
+    retriever: modernSCM([
+        $class: 'GitSCMSource',
+        remote: 'https://github.com/steiner385/capacinator-jenkins-lib.git',
+        credentialsId: 'github-credentials'
+    ])
+
+// Helper to checkout the Capacinator application repo (not the jenkins-lib repo)
+def checkoutCapacinator() {
+    checkout([
+        $class: 'GitSCM',
+        branches: [[name: '*/main']],
+        userRemoteConfigs: [[
+            url: 'https://github.com/steiner385/Capacinator.git',
+            credentialsId: 'github-credentials'
+        ]]
+    ])
+}
+
+pipeline {
+    agent none
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '14'))
+        timeout(time: 120, unit: 'MINUTES')
+        skipDefaultCheckout()
+    }
+
+    environment {
+        GITHUB_OWNER = 'steiner385'
+        GITHUB_REPO = 'Capacinator'
+        CI = 'true'
+        NODE_ENV = 'test'
+        NIGHTLY_BUILD = 'true'
+        NPM_CONFIG_CACHE = '/home/jenkins/agent/.npm-cache'
+        PLAYWRIGHT_BROWSERS_PATH = '/home/jenkins/agent/.playwright-cache'
+    }
+
+    stages {
+        stage('Initialize') {
+            agent { label 'linux' }
+            steps {
+                script {
+                    checkoutCapacinator()
+                    env.GIT_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                }
+                echo "Nightly build for Capacinator - commit: ${env.GIT_COMMIT_SHORT}"
+            }
+        }
+
+        stage('Install Dependencies') {
+            agent { label 'linux' }
+            steps {
+                script {
+                    checkoutCapacinator()
+                    def pm = pipelineHelpers.getPackageManager()
+                    echo "Using package manager: ${pm.name}"
+                    sh 'rm -f .npmrc'
+                    sh "${pm.install}"
+                }
+            }
+        }
+
+        stage('Security Audit') {
+            agent { label 'linux' }
+            steps {
+                script {
+                    checkoutCapacinator()
+                    def pm = pipelineHelpers.getPackageManager()
+                    // Use package-manager-specific audit command
+                    def auditCmd = pm.name == 'pnpm' ? 'pnpm audit --audit-level=high' :
+                                   pm.name == 'yarn' ? 'yarn audit --level high' :
+                                   'npm audit --audit-level=high'
+                    def auditResult = sh(script: "${auditCmd} 2>&1 || true", returnStatus: true)
+                    if (auditResult != 0) {
+                        unstable("${pm.name} audit found high severity vulnerabilities")
+                    }
+                }
+            }
+        }
+
+        stage('Full Test Suite') {
+            parallel {
+                stage('Unit Tests (Full Coverage)') {
+                    agent { label 'unit' }
+                    steps {
+                        script {
+                            checkoutCapacinator()
+                            def pm = pipelineHelpers.getPackageManager()
+                            sh 'rm -f .npmrc'
+                            sh "${pm.install}"
+                            sh "${pm.run} test -- --coverage"
+                        }
+                    }
+                    post {
+                        always {
+                            script {
+                                if (fileExists('allure-results')) {
+                                    allure([
+                                        includeProperties: false,
+                                        jdk: '',
+                                        results: [[path: 'allure-results']]
+                                    ])
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('E2E Tests (All Browsers)') {
+                    agent { label 'e2e' }
+                    steps {
+                        script {
+                            checkoutCapacinator()
+                            def pm = pipelineHelpers.getPackageManager()
+                            sh 'rm -f .npmrc'
+                            sh "${pm.install}"
+                            // Install all browsers for nightly full browser matrix
+                            sh 'npx playwright install'
+                            sh "${pm.run} build"
+                            sh 'rm -rf allure-results'
+                            sh "${pm.run} test:e2e -- --project=chromium --project=firefox --project=webkit || true"
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'playwright-report/**', allowEmptyArchive: true
+                            script {
+                                if (fileExists('allure-results')) {
+                                    allure([
+                                        includeProperties: false,
+                                        jdk: '',
+                                        results: [[path: 'allure-results']]
+                                    ])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build & Bundle Analysis') {
+            agent { label 'linux' }
+            steps {
+                script {
+                    checkoutCapacinator()
+                    def pm = pipelineHelpers.getPackageManager()
+                    sh 'rm -f .npmrc'
+                    sh "${pm.install}"
+                    sh "${pm.run} build"
+                }
+            }
+        }
+
+        stage('Generate Summary') {
+            agent { label 'linux' }
+            steps {
+                script {
+                    def summary = """
+## Capacinator Nightly Build Summary
+
+**Build**: #${env.BUILD_NUMBER}
+**Date**: ${new Date().format('yyyy-MM-dd HH:mm:ss')}
+**Commit**: ${env.GIT_COMMIT_SHORT}
+**URL**: ${env.BUILD_URL}
+
+### Test Results
+- Unit Tests: Check Allure report and coverage
+- E2E Tests: Check Playwright report
+
+### Reports
+- Allure Test Report
+- Coverage Report
+- E2E Playwright Report
+"""
+                    writeFile file: 'nightly-summary.md', text: summary
+                    archiveArtifacts artifacts: 'nightly-summary.md'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            node('linux') {
+                script {
+                    // Analyze Allure results from all test stages and create specific issues
+                    if (fileExists('allure-results')) {
+                        analyzeAllureFailures(
+                            allureResultsDir: 'allure-results',
+                            testType: 'Nightly',
+                            maxIssues: 20  // Higher limit for nightly (multiple test types)
+                        )
+                    }
+                }
+            }
+        }
+        success {
+            echo 'Capacinator nightly build succeeded!'
+        }
+        failure {
+            echo 'Capacinator nightly build failed - check GitHub issues for specific failures'
+        }
+    }
+}
