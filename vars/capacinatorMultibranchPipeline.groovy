@@ -6,9 +6,32 @@
  * Usage:
  *   @Library('capacinator-lib@main') _
  *   capacinatorMultibranchPipeline()
+ *
+ * Branch Filtering:
+ *   - Only PRs and protected branches (main, develop, staging, deploy/*) are built
+ *   - Other branch pushes are skipped immediately without allocating an executor
+ *   - To prevent build entries entirely, configure Branch Source in Jenkins UI:
+ *     Configure > Branch Sources > GitHub > Behaviors > Filter by name (with regular expression)
+ *     Include: (main|develop|staging|deploy/.*)
  */
 
 def call(Map config = [:]) {
+    // Pre-flight branch check (runs without allocating an agent)
+    def isPR = env.CHANGE_ID != null
+    def isProtectedBranch = env.BRANCH_NAME in ['main', 'develop', 'staging'] || env.BRANCH_NAME?.startsWith('deploy/')
+
+    if (!isPR && !isProtectedBranch) {
+        echo "⏭️ Skipping build for branch: ${env.BRANCH_NAME}"
+        echo "This branch will be built when a PR is created."
+        echo ""
+        echo "To prevent these build entries entirely, configure Branch Source filtering in Jenkins:"
+        echo "  Configure > Branch Sources > Behaviors > Filter by name (with regular expression)"
+        echo "  Include: (main|develop|staging|deploy/.*)"
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = "Skipped: feature branch (no PR)"
+        return
+    }
+
     pipeline {
         agent any
 
@@ -34,16 +57,16 @@ def call(Map config = [:]) {
             stage('Initialize') {
                 steps {
                     script {
-                        // Skip non-PR feature branches to save resources
-                        def isPR = env.CHANGE_ID != null
-                        def isProtected = env.BRANCH_NAME in ['main', 'develop']
-
-                        if (!isPR && !isProtected) {
-                            echo "Skipping build for non-PR feature branch: ${env.BRANCH_NAME}"
-                            currentBuild.result = 'NOT_BUILT'
-                            currentBuild.displayName = "#${env.BUILD_NUMBER} - ${env.BRANCH_NAME} (skipped)"
-                            return
+                        // Determine build type for logging and status reporting
+                        def buildType = env.CHANGE_ID ? "PR #${env.CHANGE_ID}" : "Branch: ${env.BRANCH_NAME}"
+                        echo "=== Multi-Branch Build ==="
+                        echo "Build type: ${buildType}"
+                        if (env.CHANGE_ID) {
+                            echo "PR Title: ${env.CHANGE_TITLE ?: 'N/A'}"
+                            echo "PR Author: ${env.CHANGE_AUTHOR ?: 'N/A'}"
+                            echo "Target Branch: ${env.CHANGE_TARGET ?: 'N/A'}"
                         }
+                        echo "=========================="
 
                         // Enable Windows builds only for main branch
                         env.BUILD_WINDOWS = (env.BRANCH_NAME == 'main') ? 'true' : 'false'
@@ -52,7 +75,7 @@ def call(Map config = [:]) {
                         githubStatusReporter(
                             status: 'pending',
                             context: 'jenkins/ci',
-                            description: 'Build started'
+                            description: "Build started for ${buildType}"
                         )
                     }
                     checkout scm
@@ -60,14 +83,12 @@ def call(Map config = [:]) {
             }
 
             stage('Install Dependencies') {
-                when { expression { currentBuild.result != 'NOT_BUILT' } }
                 steps {
                     installDependencies()
                 }
             }
 
             stage('Lint + Type Check') {
-                when { expression { currentBuild.result != 'NOT_BUILT' } }
                 steps {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                         runLintChecks(
@@ -80,11 +101,10 @@ def call(Map config = [:]) {
             }
 
             stage('Unit Tests') {
-                when { expression { currentBuild.result != 'NOT_BUILT' } }
                 steps {
                     runUnitTests(
                         testCommand: 'npm run test:unit',
-                        coverageThreshold: 45,
+                        coverageThreshold: 70,
                         skipCheckout: true
                     )
                 }
@@ -117,7 +137,6 @@ def call(Map config = [:]) {
 
             stage('Build') {
                 when {
-                    expression { currentBuild.result != 'NOT_BUILT' }
                     anyOf {
                         branch 'main'
                         branch 'develop'
@@ -157,36 +176,30 @@ def call(Map config = [:]) {
 
         post {
             always {
-                script {
-                    if (currentBuild.result != 'NOT_BUILT') {
-                        publishReports(
-                            junit: true,
-                            playwright: fileExists('playwright-report'),
-                            coverage: fileExists('coverage')
-                        )
-                    }
-                }
+                publishReports(
+                    junit: true,
+                    playwright: fileExists('playwright-report'),
+                    coverage: fileExists('coverage')
+                )
             }
             success {
                 script {
-                    if (currentBuild.result != 'NOT_BUILT') {
-                        githubStatusReporter(
-                            status: 'success',
-                            context: 'jenkins/ci',
-                            description: 'Build succeeded'
-                        )
-                    }
+                    def buildType = env.CHANGE_ID ? "PR #${env.CHANGE_ID}" : env.BRANCH_NAME
+                    githubStatusReporter(
+                        status: 'success',
+                        context: 'jenkins/ci',
+                        description: "Build succeeded for ${buildType}"
+                    )
                 }
             }
             failure {
                 script {
-                    if (currentBuild.result != 'NOT_BUILT') {
-                        githubStatusReporter(
-                            status: 'failure',
-                            context: 'jenkins/ci',
-                            description: 'Build failed'
-                        )
-                    }
+                    def buildType = env.CHANGE_ID ? "PR #${env.CHANGE_ID}" : env.BRANCH_NAME
+                    githubStatusReporter(
+                        status: 'failure',
+                        context: 'jenkins/ci',
+                        description: "Build failed for ${buildType}"
+                    )
                 }
             }
             cleanup {

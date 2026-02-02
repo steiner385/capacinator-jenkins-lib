@@ -93,15 +93,16 @@ def getInstallCommand() {
 
 /**
  * Get default service ports
- * Returns list of ports used by microservices and frontend
+ * Returns list of ports used by Capacinator server and client
  */
 def getServicePorts() {
     return [
-        // Microservices (3001-3020)
-        3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008,
-        3009, 3010, 3011, 3012, 3013, 3014, 3015, 3020,
-        // Frontend dev servers (5178-5180)
-        5178, 5179, 5180
+        // Server ports (development and E2E)
+        3110, 3111,
+        // Client/Vite ports (development and E2E)
+        3120, 3121,
+        // PostgreSQL (if using Docker)
+        5432
     ]
 }
 
